@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ff8fb1">
+<link rel="manifest" href="manifest.json">
+<title>Cửa FaceID</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fff3f7; --card:#ffffff; --ink:#4a3340; --mute:#9a7f8c; --pink:#ff8fb1; --pink-d:#e0678f;
+  --mint:#7fdbb6; --mint-d:#2e9c74; --red:#ff6b81; --line:#ffd9e5;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Nunito,system-ui,sans-serif;background:var(--bg);color:var(--ink);
+  padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom));min-height:100vh}
+h1,h2{font-family:'Baloo 2',sans-serif;margin:0}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px}
+header h1{font-size:22px}
+#conn{font-size:13px;font-weight:700;padding:5px 12px;border-radius:99px;background:#eee;color:var(--mute)}
+#conn.on{background:#d8f8ea;color:var(--mint-d)} #conn.off{background:#ffe0e5;color:var(--red)}
+main{padding:0 16px;max-width:560px;margin:0 auto}
+section{display:none} section.active{display:block}
+.card{background:var(--card);border-radius:22px;padding:16px;margin-bottom:14px;border:2px solid var(--line)}
+.stage{position:relative;border-radius:26px;overflow:hidden;background:#000;aspect-ratio:3/4;border:4px solid var(--pink)}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage video{transform:scaleX(-1)} .stage canvas{transform:scaleX(-1)}
+#banner{position:absolute;left:12px;right:12px;bottom:12px;padding:12px 14px;border-radius:18px;
+  font-family:'Baloo 2';font-size:19px;text-align:center;background:rgba(255,255,255,.92);transition:background .25s}
+#banner.ok{background:var(--mint);color:#0d4a35} #banner.bad{background:var(--red);color:#fff}
+button{font:inherit;font-weight:700;border:0;border-radius:16px;padding:12px 18px;background:var(--pink);color:#fff;cursor:pointer}
+button:active{transform:scale(.97)} button.ghost{background:#ffe6ee;color:var(--pink-d)}
+button.del{background:#ffe0e5;color:var(--red);padding:6px 12px}
+button:focus-visible,input:focus-visible,nav a:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+input[type=text],input[type=password],input[type=number]{width:100%;font:inherit;padding:11px 14px;border-radius:14px;border:2px solid var(--line);background:#fffafc;color:var(--ink)}
+label{display:block;font-weight:700;font-size:14px;margin:12px 0 5px}
+.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}
+.hint{color:var(--mute);font-size:13px;margin:6px 0 0}
+.person{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px dashed var(--line)}
+.person:last-child{border:0}
+.alert{display:flex;gap:12px;margin-bottom:12px}
+.alert img{width:96px;height:128px;object-fit:cover;border-radius:14px;border:2px solid var(--red)}
+.alert b{color:var(--red)}
+#log{font-size:13px;color:var(--mute);max-height:130px;overflow:auto;line-height:1.6}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:2px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav a{flex:1;text-align:center;padding:12px 0 10px;font-weight:700;font-size:13px;color:var(--mute);text-decoration:none;position:relative}
+nav a.active{color:var(--pink-d)} nav a .dot{display:none;position:absolute;top:8px;right:28%;width:10px;height:10px;border-radius:50%;background:var(--red)}
+nav a .dot.show{display:block}
+#toast{position:fixed;top:calc(12px + env(safe-area-inset-top));left:16px;right:16px;max-width:520px;margin:auto;padding:14px;border-radius:18px;
+  background:var(--ink);color:#fff;font-weight:700;text-align:center;transform:translateY(-140%);transition:transform .3s;z-index:9}
+#toast.show{transform:none} #toast.bad{background:var(--red)} #toast.ok{background:var(--mint-d)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header><h1>Cửa FaceID</h1><span id="conn">Chưa kết nối</span></header>
+<div id="toast"></div>
+<main>
+
+<section id="tab-cam" class="active">
+  <div class="stage">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="banner">Bấm “Bật camera” để bắt đầu</div>
+  </div>
+  <div id="dbg" class="hint" style="margin-top:8px">Trạng thái nhận diện sẽ hiện ở đây</div>
+  <div class="row" style="margin:12px 0">
+    <button id="btnStart">Bật camera</button>
+    <button id="btnFlip" class="ghost">Đổi camera</button>
+  </div>
+  <div class="card"><div id="log">Nhật ký sẽ hiện ở đây.</div></div>
+</section>
+
+<section id="tab-enroll">
+  <div class="card">
+    <h2>Thêm người được vào cửa</h2>
+    <label for="pname">Tên</label>
+    <input id="pname" type="text" placeholder="Ví dụ: Minh">
+    <p class="hint">Bật camera ở tab Camera, nhìn thẳng vào màn hình rồi bấm chụp. Chụp 3–5 mẫu (nghiêng nhẹ đầu, đổi ánh sáng) để nhận diện chính xác hơn.</p>
+    <div class="row" style="margin-top:12px"><button id="btnEnroll">Chụp mẫu khuôn mặt</button></div>
+  </div>
+  <div class="card"><h2 style="font-size:18px">Danh sách</h2><div id="people"></div></div>
+</section>
+
+<section id="tab-alert">
+  <div class="card"><h2>Cảnh báo người lạ</h2><p class="hint">Màn hình này nhận ảnh qua MQTT, nên một điện thoại khác mở app cũng thấy cảnh báo.</p>
+    <div class="row" style="margin-top:10px"><button id="btnNotif" class="ghost">Bật thông báo điện thoại</button><button id="btnClear" class="ghost">Xóa hết</button></div></div>
+  <div id="alerts"></div>
+</section>
+
+<section id="tab-set">
+  <div class="card">
+    <h2>Kết nối MQTT</h2>
+    <label for="broker">Broker (WebSocket)</label>
+    <input id="broker" type="text">
+    <label for="prefix">Tiền tố topic</label>
+    <input id="prefix" type="text">
+    <label for="secret">Mã bí mật (trùng với code ESP32)</label>
+    <input id="secret" type="password">
+    <label for="thr">Ngưỡng nhận diện (nhỏ = khắt khe hơn)</label>
+    <input id="thr" type="number" step="0.01" min="0.3" max="0.8">
+    <div class="row" style="margin-top:14px"><button id="btnSave">Lưu và kết nối</button></div>
+  </div>
+  <div class="card">
+    <h2>Telegram (không bắt buộc)</h2>
+    <label for="tgToken">Bot token</label><input id="tgToken" type="text">
+    <label for="tgChat">Chat ID</label><input id="tgChat" type="text">
+    <p class="hint">Điền để ảnh người lạ được gửi thẳng vào Telegram, nhận thông báo cả khi đã đóng app.</p>
+  </div>
+</section>
+</main>
+
+<nav>
+  <a href="#cam" data-t="tab-cam" class="active">Camera</a>
+  <a href="#enroll" data-t="tab-enroll">Khuôn mặt</a>
+  <a href="#alert" data-t="tab-alert">Cảnh báo<span class="dot" id="adot"></span></a>
+  <a href="#set" data-t="tab-set">Cài đặt</a>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const DEF = { broker:'wss://broker.hivemq.com:8884/mqtt', prefix:'smartdoor_demo_123', secret:'doi-ma-nay', thr:0.5, tgToken:'', tgChat:'' };
+const cfg = Object.assign({}, DEF, JSON.parse(localStorage.getItem('cfg') || '{}'));
+let faces = JSON.parse(localStorage.getItem('faces') || '[]');   // [{name, descs:[[128 số]]}]
+let client = null, stream = null, facing = 'user', running = false, modelsReady = false;
+let okStreak = 0, okName = '', badStreak = 0, cooldownUntil = 0;
+const T = n => `${cfg.prefix}/${n}`;
+
+/* ---------- UI chung ---------- */
+function toast(msg, kind='') { const t=$('toast'); t.textContent=msg; t.className='show '+kind; clearTimeout(t._t); t._t=setTimeout(()=>t.className='',3500); }
+function log(m){ const l=$('log'); const d=document.createElement('div'); d.textContent=new Date().toLocaleTimeString('vi-VN')+'  '+m; l.prepend(d); }
+function banner(msg, kind=''){ const b=$('banner'); b.textContent=msg; b.className=kind; }
+function beep(f=880,ms=250){ try{ const a=new (window.AudioContext||window.webkitAudioContext)(), o=a.createOscillator(); o.frequency.value=f; o.connect(a.destination); o.start(); setTimeout(()=>{o.stop();a.close()},ms);}catch(e){} }
+
+document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
+  e.preventDefault();
+  document.querySelectorAll('nav a').forEach(x=>x.classList.toggle('active',x===a));
+  document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id===a.dataset.t));
+  if(a.dataset.t==='tab-alert') $('adot').classList.remove('show');
+}));
+
+/* ---------- Cài đặt ---------- */
+['broker','prefix','secret','thr','tgToken','tgChat'].forEach(k=>$(k).value=cfg[k]);
+$('btnSave').onclick=()=>{
+  ['broker','prefix','secret','tgToken','tgChat'].forEach(k=>cfg[k]=$(k).value.trim());
+  cfg.thr=parseFloat($('thr').value)||0.5;
+  localStorage.setItem('cfg',JSON.stringify(cfg));
+  connectMQTT(); toast('Đã lưu cài đặt','ok');
+};
+
+/* ---------- MQTT ---------- */
+function connectMQTT(){
+  if(client){ try{client.end(true)}catch(e){} }
+  $('conn').textContent='Đang kết nối…'; $('conn').className='';
+  client = mqtt.connect(cfg.broker,{clientId:'phone_'+Math.random().toString(16).slice(2,8),reconnectPeriod:3000,connectTimeout:8000});
+  client.on('connect',()=>{
+    $('conn').textContent='Đã kết nối'; $('conn').className='on';
+    client.subscribe([T('alert'),T('status'),T('pir')]);
+    log('Đã kết nối MQTT');
+  });
+  client.on('close',()=>{ $('conn').textContent='Mất kết nối'; $('conn').className='off'; });
+  client.on('error',e=>log('Lỗi MQTT: '+e.message));
+  client.on('message',(topic,payload)=>{
+    const s=payload.toString();
+    if(topic===T('alert')){ try{ showAlert(JSON.parse(s)); }catch(e){} }
+    else if(topic===T('status')) log('Cửa: '+s);
+    else if(topic===T('pir')) log('Cảm biến PIR: '+s);
+  });
+}
+const pub=(n,m,opt)=>client&&client.connected&&client.publish(T(n),m,opt||{qos:0});
+
+/* ---------- Thông báo ---------- */
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+$('btnNotif').onclick=async()=>{
+  if(!('Notification' in window)) return toast('Trình duyệt không hỗ trợ thông báo','bad');
+  const p=await Notification.requestPermission(); toast(p==='granted'?'Đã bật thông báo':'Bạn đã chặn thông báo', p==='granted'?'ok':'bad');
+};
+async function notify(title, body, icon){
+  try{
+    if(Notification.permission!=='granted') return;
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    const opt={body,icon,vibrate:[200,100,200],tag:'door'};
+    if(reg) reg.showNotification(title,opt); else new Notification(title,opt);
+  }catch(e){}
+}
+
+/* ---------- Cảnh báo ---------- */
+function showAlert(a){
+  const el=document.createElement('div'); el.className='card alert';
+  el.innerHTML=`<img alt="Ảnh người lạ"><div><b>Phát hiện người lạ</b><div class="hint"></div><div class="hint">Cửa vẫn đóng.</div></div>`;
+  el.querySelector('img').src=a.img; el.querySelector('.hint').textContent=new Date(a.t).toLocaleString('vi-VN');
+  $('alerts').prepend(el);
+  if(!$('tab-alert').classList.contains('active')) $('adot').classList.add('show');
+  toast('Cảnh báo: có người lạ trước cửa!','bad'); beep(300,500); navigator.vibrate&&navigator.vibrate([300,150,300]);
+  notify('Cảnh báo người lạ','Có người lạ trước cửa, cửa vẫn đóng.',a.img);
+}
+$('btnClear').onclick=()=>$('alerts').innerHTML='';
+
+/* ---------- Khuôn mặt ---------- */
+function renderPeople(){
+  const box=$('people'); box.innerHTML='';
+  if(!faces.length){ box.innerHTML='<p class="hint">Chưa có ai. Thêm khuôn mặt đầu tiên nhé.</p>'; return; }
+  faces.forEach((p,i)=>{
+    const d=document.createElement('div'); d.className='person';
+    d.innerHTML=`<span><b></b> <span class="hint"></span></span><button class="del">Xóa</button>`;
+    d.querySelector('b').textContent=p.name; d.querySelector('.hint').textContent=p.descs.length+' mẫu';
+    d.querySelector('button').onclick=()=>{ faces.splice(i,1); saveFaces(); renderPeople(); };
+    box.appendChild(d);
+  });
+}
+const saveFaces=()=>localStorage.setItem('faces',JSON.stringify(faces));
+
+async function loadModels(){
+  if(modelsReady) return;
+  banner('Đang tải mô hình nhận diện…');
+  try{ await faceapi.tf.setBackend('webgl'); }catch(e){ await faceapi.tf.setBackend('cpu'); }
+  await faceapi.tf.ready(); log('Bộ xử lý: '+faceapi.tf.getBackend());
+  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+  await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+  modelsReady=true;
+}
+const detOpt=()=>new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.5});
+const detect=()=>faceapi.detectSingleFace($('video'),detOpt()).withFaceLandmarks().withFaceDescriptor();
+
+$('btnEnroll').onclick=async()=>{
+  const name=$('pname').value.trim();
+  if(!name) return toast('Nhập tên trước đã','bad');
+  if(!running) return toast('Bật camera ở tab Camera trước','bad');
+  let err=null; const r=await detect().catch(e=>{err=e;return null;});
+  if(err){ log('Lỗi nhận diện: '+err.message); return toast('Lỗi nhận diện: '+err.message,'bad'); }
+  if(!r) return toast('Không thấy khuôn mặt, thử lại','bad');
+  let p=faces.find(f=>f.name===name); if(!p){ p={name,descs:[]}; faces.push(p); }
+  p.descs.push(Array.from(r.descriptor)); saveFaces(); renderPeople();
+  toast(`Đã lưu mẫu ${p.descs.length} cho ${name}`,'ok');
+};
+
+function bestMatch(desc){
+  let best={name:null,dist:9};
+  for(const p of faces) for(const d of p.descs){
+    const dist=faceapi.euclideanDistance(Array.from(desc),d);
+    if(dist<best.dist) best={name:p.name,dist};
+  }
+  return best;
+}
+
+/* ---------- Camera + vòng lặp nhận diện ---------- */
+async function startCam(){
+  try{
+    await loadModels();
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:640},height:{ideal:480}},audio:false});
+    $('video').srcObject=stream; await $('video').play();
+    const wasRunning=running; running=true; banner('Đang quét khuôn mặt…');
+    try{ navigator.wakeLock&&navigator.wakeLock.request('screen'); }catch(e){}
+    if(!wasRunning) loop();
+  }catch(e){ banner('Không mở được camera','bad'); log('Lỗi camera: '+e.message+' (cần HTTPS hoặc localhost)'); }
+}
+$('btnStart').onclick=startCam;
+$('btnFlip').onclick=()=>{ facing=facing==='user'?'environment':'user'; if(running) startCam(); };
+
+async function loop(){
+  if(!running) return;
+  try{
+    const v=$('video'), c=$('overlay');
+    if(v.videoWidth && v.readyState>=2){
+      c.width=v.videoWidth; c.height=v.videoHeight;
+      const ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height);
+      const now=Date.now();
+      const r=await detect();
+      if(!r){
+        okStreak=badStreak=0;
+        $('dbg').textContent='Chưa thấy mặt trong khung hình';
+        if(now>cooldownUntil) banner('Đang quét… chưa thấy mặt, đưa mặt gần và nhìn thẳng');
+      }else{
+        const b=r.detection.box;
+        const m = faces.length ? bestMatch(r.descriptor) : {name:null,dist:9};
+        const known = m.dist < cfg.thr;
+        $('dbg').textContent=`Đã thấy mặt | giống nhất: ${m.name||'chưa có ai'} | khoảng cách ${m.dist<9?m.dist.toFixed(2):'-'} (cần < ${cfg.thr})`;
+        ctx.lineWidth=6; ctx.strokeStyle=known?'#7fdbb6':'#ff6b81'; ctx.strokeRect(b.x,b.y,b.width,b.height);
+        if(now>cooldownUntil){
+          if(known){ badStreak=0; okStreak=(okName===m.name)?okStreak+1:1; okName=m.name;
+            banner(`Xin chào ${m.name}…`); if(okStreak>=3) grant(m); }
+          else{ okStreak=0; okName=''; badStreak++; banner('Đang xác minh…'); if(badStreak>=4) deny(); }
+        }
+      }
+    }
+  }catch(e){
+    $('dbg').textContent='Lỗi vòng quét: '+e.message;
+    if(!window._loopErr){ window._loopErr=1; log('Lỗi vòng quét: '+e.message); }
+  }
+  setTimeout(loop,350);
+}
+
+function grant(m){
+  okStreak=0; cooldownUntil=Date.now()+8000;
+  banner(`Xác thực thành công! Chào ${m.name}`,'ok'); beep(1000,200);
+  pub('cmd','OPEN|'+cfg.secret);
+  pub('event',JSON.stringify({result:'granted',name:m.name,dist:+m.dist.toFixed(3),t:Date.now()}));
+  log(`✔ ${m.name} (khoảng cách ${m.dist.toFixed(2)}) → gửi lệnh mở cửa`);
+  toast(`Xác thực thành công: ${m.name}`,'ok');
+  notify('Mở cửa thành công',`Chào ${m.name}`);
+}
+
+function snapshot(){
+  const v=$('video'), c=document.createElement('canvas');
+  const w=320, h=Math.round(w*v.videoHeight/v.videoWidth);
+  c.width=w; c.height=h; c.getContext('2d').drawImage(v,0,0,w,h);
+  return c.toDataURL('image/jpeg',0.6);
+}
+async function deny(){
+  badStreak=0; cooldownUntil=Date.now()+10000;
+  banner('Người lạ! Cửa vẫn đóng','bad'); beep(300,600);
+  const img=snapshot(), a={t:Date.now(),img};
+  pub('cmd','DENY|'+cfg.secret);
+  pub('alert',JSON.stringify(a),{qos:1});
+  log('✖ Người lạ → đã chụp ảnh và gửi cảnh báo');
+  if(cfg.tgToken&&cfg.tgChat){
+    try{
+      const blob=await (await fetch(img)).blob(), f=new FormData();
+      f.append('chat_id',cfg.tgChat); f.append('caption','Cảnh báo: có người lạ trước cửa!'); f.append('photo',blob,'stranger.jpg');
+      await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendPhoto`,{method:'POST',body:f});
+      log('Đã gửi ảnh qua Telegram');
+    }catch(e){ log('Lỗi Telegram: '+e.message); }
+  }
+}
+
+renderPeople(); connectMQTT();
+</script>
+</body>
+</html>
